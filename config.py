@@ -17,13 +17,15 @@ LSTM_HIDDEN = 768
 BERT_HIDDEN = 512
 MAX_LEN = 126  # rest two for [CLS] and [SEP]  Unified Length in mini-batch
 
-n_epoch = 5
+n_epoch = 8
 batch_size = 64
 output_folder = "output_model"
 
-num_test = 128
-num_train = 1280
+num_test = 1280
+num_train = 128000
 
 batch_size_test = 64
 
 lr = 1e-4
+
+num_split = 2  # Split train data into 2 splits

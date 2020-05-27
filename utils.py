@@ -69,7 +69,8 @@ def extract_sentence(cur_item, all_items):
 # -------------------------------------------------------------------------------------------
 # ijson: used to parse big json file
 # -------------------------------------------------------------------------------------------
-def parse_json(parser, mode, num_train=128):
+def parse_json(parser, mode, split, last_iters, num_train=128):
+    print("============ Last Iters = {} ==============".format(last_iters))
     all_items = []
     if num_train > 134891:
         logger.error("Training samples overflow")
@@ -77,6 +78,7 @@ def parse_json(parser, mode, num_train=128):
         num_train = cfg.num_train
     if mode == 'valid':
         num_train = cfg.num_test
+    cur_iters = 0
     index = 0
     count = 0
     cur_tokens = []
@@ -87,8 +89,22 @@ def parse_json(parser, mode, num_train=128):
     f_mask = False
     f_label = False
     for prefix, event, value in parser:
-        if index == num_train:
-            break
+        if split == 2:
+            if cur_iters < last_iters:
+                cur_iters+=1
+                continue
+            if index == num_train/2:
+                break
+        
+        elif split == 1:
+            if index == num_train/2:
+                break
+        else:
+            if index == num_train:
+                break
+        
+        cur_iters+=1
+
         if count == 3:
             all_items.append(cur_item)
             # extract_sentence(cur_item, all_items)
@@ -138,9 +154,10 @@ def parse_json(parser, mode, num_train=128):
         
 
     print("Completed Parsing json !")
-    return all_items
+    last_iters = cur_iters
+    return last_iters, all_items
 
-def read_ijson_examples(args, tokenizer, dataset_type):
+def read_ijson_examples(args, tokenizer, dataset_type, split, last_iters):
     ''' load data from big json file '''            
     if not os.listdir(args['data_path']):
         logger.info('Error : not found %s' % args['data_path'])
@@ -158,19 +175,20 @@ def read_ijson_examples(args, tokenizer, dataset_type):
     f = open(openkp_file, 'r', encoding='utf8')
     print("Opened json file")
     parser = ijson.parse(f)
-    all_items = parse_json(parser, mode)   
+    last_iters, all_items = parse_json(parser, mode, split, last_iters)   
     print("mode {}, all_items length is {}".format(mode, len(all_items))) 
-    return all_items
+    return last_iters, all_items
 
 # -------------------------------------------------------------------------------------------
 # build dataset and dataloader
 # -------------------------------------------------------------------------------------------        
 class build_openkp_dataset(Dataset):
     ''' build datasets for train & eval '''
-    def __init__(self, args, dataset_type, tokenizer, converter, shuffle=False):
+    def __init__(self, args, dataset_type, tokenizer, converter, split, last_iters, shuffle=False):
         #self.manager = Manager()
         self.dataset_type = dataset_type
-        self.all_items = read_ijson_examples(args, tokenizer, dataset_type)
+        self.last_iters = last_iters
+        self.last_iters, self.all_items = read_ijson_examples(args, tokenizer, dataset_type, split, last_iters)
         #self.all_items = self.manager.list(self.all_items)
         self.tokenizer = tokenizer
         self.converter = converter
@@ -184,39 +202,7 @@ class build_openkp_dataset(Dataset):
     def __getitem__(self, index):
         return convert_items_to_features(index, self.all_items[index], self.tokenizer, 
                                             self.converter, self.dataset_type)
-'''
-def convert_items_to_features(index, item, tokenizer, tag_to_ix, run_mode):
-    num_tokens = len(item['tokens'])
-    if num_tokens < cfg.MAX_LEN:
-        padded_tokens = item['tokens'] + [cfg.PAD_TOKEN for i in range( cfg.MAX_LEN-num_tokens ) ] 
-        src_tokens = [cfg.CLS_TOKEN] + padded_tokens + [cfg.SEP_TOKEN]
-    else:   
-        src_tokens = [cfg.CLS_TOKEN] + item['tokens'][:cfg.MAX_LEN] + [cfg.SEP_TOKEN]
 
-    if run_mode == 'train' or run_mode == 'valid':
-        if num_tokens < cfg.MAX_LEN:
-            padded_tags = [tag_to_ix[t] for t in item['labels'] ] + [tag_to_ix['O'] for i in range( cfg.MAX_LEN-num_tokens ) ]
-            targets = [tag_to_ix['O'] ] + padded_tags + [tag_to_ix['O'] ] 
-        else:
-            targets = [tag_to_ix['O'] ] + [tag_to_ix[t] for t in item['labels'] ][:cfg.MAX_LEN] + [tag_to_ix['O'] ] 
-            
-        assert len(src_tokens) == len(targets)
-        targets = torch.tensor( targets, dtype=torch.long)
-        return src_tokens, targets
-    
-    else:
-        logger.info('not the mode : %s'% run_mode) 
-
-def collate_wrapper(batch):
-    src_tokens = [x[0] for x in batch]
-    src_labels = [x[1] for x in batch]
-    
-    labels = torch.LongTensor(len(src_labels), cfg.MAX_LEN+2).zero_()
-    for i, t in enumerate(src_labels):
-        labels[i, :].copy_(t)
-
-    return src_tokens, labels
-'''
 
 def convert_items_to_features(index, item, tokenizer, tag_to_ix, run_mode):
     if run_mode == 'train' or run_mode == 'valid':

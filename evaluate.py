@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch.optim as optim
 from pytorch_pretrained_bert import BertTokenizer, BertModel
 import config as cfg
-from build_dataset import build_single_batch
 import network_batch as network
 from tqdm import tqdm 
 import os
